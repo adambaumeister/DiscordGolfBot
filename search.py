@@ -3,7 +3,7 @@ import os
 import logging
 import requests
 from typing import List, Optional
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, Field
 
 LOGGER = logging.getLogger()
 
@@ -27,7 +27,27 @@ class ImageItem(BaseModel):
 
 
 class ImageSearchResponse(BaseModel):
-    items: List[ImageItem]
+    items: List[ImageItem] = []
+
+
+class MetaTags(BaseModel):
+    image: Optional[HttpUrl] = Field(alias="og:image", default=None)
+
+
+class PageMap(BaseModel):
+    metatags: List[MetaTags]
+
+
+class TextItem(BaseModel):
+    kind: str
+    title: str
+    link: HttpUrl
+    snippet: str
+    pagemap: PageMap
+
+
+class TextSearchResponse(BaseModel):
+    items: List[TextItem] = []
 
 
 class CachedImageSearch(BaseModel):
@@ -35,14 +55,13 @@ class CachedImageSearch(BaseModel):
     response: ImageSearchResponse
 
 
-class ImageSearchCache:
+class CachedTextSearch(BaseModel):
+    ts: datetime.datetime = datetime.datetime.now()
+    response: TextSearchResponse
+
+
+class SearchCache:
     CACHE_AGE_DAYS = 10
-
-    def __init__(self):
-        self.cache: dict[str, CachedImageSearch] = {}
-
-    def add_to_cache(self, key, cached_image_search: CachedImageSearch):
-        self.cache[key] = cached_image_search
 
     def get_from_cache(self, key):
         """Returns the item from teh cache, assuming it's not older than the max cache age."""
@@ -57,6 +76,22 @@ class ImageSearchCache:
         return result
 
 
+class ImageSearchCache(SearchCache):
+    def __init__(self):
+        self.cache: dict[str, CachedImageSearch] = {}
+
+    def add_to_cache(self, key, cached_image_search: CachedImageSearch):
+        self.cache[key] = cached_image_search
+
+
+class TextSearchCache(SearchCache):
+    def __init__(self):
+        self.cache: dict[str, CachedTextSearch] = {}
+
+    def add_to_cache(self, key, cached_text_search: CachedTextSearch):
+        self.cache[key] = cached_text_search
+
+
 class Search:
     """Simple wrapper around the google 'custom search' API.
     Supports caching based on search queries so we only use it a minimal amount."""
@@ -68,6 +103,26 @@ class Search:
         self.params = {"cx": self.search_engine_id, "key": self.search_engine_key}
 
         self.image_search_cache = ImageSearchCache()
+        self.text_search_cache = TextSearchCache()
+
+    def get_first_web_result(self, search_str: str):
+        cached_result = self.text_search_cache.get_from_cache(search_str)
+        if cached_result:
+            return cached_result.response.items[0]
+
+        extra_params = {
+            "q": search_str,
+        }
+        r = requests.get(
+            url=BASE_URL,
+            params={**self.params, **extra_params}
+        ).json()
+        search_response = TextSearchResponse.model_validate(r)
+        if not search_response.items:
+            return None
+
+        self.text_search_cache.add_to_cache(search_str, CachedTextSearch(response=search_response))
+        return search_response.items[0]
 
     def get_first_image(self, search_str: str):
         cached_result = self.image_search_cache.get_from_cache(search_str)
@@ -83,5 +138,8 @@ class Search:
             params={**self.params, **extra_params}
         ).json()
         search_response = ImageSearchResponse.model_validate(r)
+        if not search_response.items:
+            return None
+
         self.image_search_cache.add_to_cache(search_str, CachedImageSearch(response=search_response))
         return search_response.items[0]

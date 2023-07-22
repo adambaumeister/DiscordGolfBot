@@ -1,0 +1,35 @@
+{
+  "kind": "customsearch#result",
+  "title": "Rory McIlroy - Wikipedia",
+  "htmlTitle": "<b>Rory McIlroy</b> - Wikipedia",
+  "link": "https://en.wikipedia.org/wiki/Rory_McIlroy",
+  "displayLink": "en.wikipedia.org",
+  "snippet": "Rory Daniel McIlroy MBE (born 4 May 1989) is a Northern Irish professional golfer who is a member of both the European and PGA Tours. He is a former world ...",
+  "htmlSnippet": "<b>Rory</b> Daniel <b>McIlroy</b> MBE (born 4 May 1989) is a Northern Irish professional <b>golfer</b> who is a member of both the European and PGA Tours. He is a former world&nbsp;...",
+  "cacheId": "uPyu6TrnoKYJ",
+  "formattedUrl": "https://en.wikipedia.org/wiki/Rory_McIlroy",
+  "htmlFormattedUrl": "https://en.wikipedia.org/wiki/<b>Rory</b>_<b>McIlroy</b>",
+  "pagemap": {
+    "hcard": [
+      {
+        "note": "Rory McIlroy MBE",
+        "bday": "1989-05-04",
+        "fn": "Rory McIlroy MBE",
+        "nickname": "Rors,[1] Wee-Mac[2]"
+      }
+    ],
+    "metatags": [
+      {
+        "referrer": "origin",
+        "og:image": "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8b/Rory_McIlroy_watches_drive_flight_%28portrait_orientation%29.jpg/1200px-Rory_McIlroy_watches_drive_flight_%28portrait_orientation%29.jpg",
+        "theme-color": "#eaecf0",
+        "og:image:width": "1200",
+        "og:type": "website",
+        "viewport": "width=device-width, initial-scale=1.0, user-scalable=yes, minimum-scale=0.25, maximum-scale=5.0",
+        "og:title": "Rory McIlroy - Wikipedia",
+        "og:image:height": "1717",
+        "format-detection": "telephone=no"
+      }
+    ]
+  }
+}

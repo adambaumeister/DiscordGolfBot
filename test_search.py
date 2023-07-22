@@ -21,6 +21,15 @@ def test_search_first_image(search_fixture):
     assert image.link
 
 
+def test_get_first_web_result(search_fixture):
+    result = search_fixture.get_first_web_result("site:en.wikipedia.org Rory McIlroy Golf")
+    assert result.snippet
+    assert result.pagemap.metatags[0].image
+
+    null_result = search_fixture.get_first_web_result("site:en.wikipedia.org notarealperson McIlroy Golf")
+    assert not null_result
+
+
 def test_cache():
     from search import CachedImageSearch, ImageSearchCache, ImageSearchResponse
 

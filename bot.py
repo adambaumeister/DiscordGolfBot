@@ -240,6 +240,30 @@ class CalenderResponseEmbed:
         return embed
 
 
+class PlayerProfileEmbed:
+    COLOR = 0x33FF80
+
+    @staticmethod
+    def get_embed(
+            player_name: str,
+            player_image: str,
+            profile_snippet: str,
+            link: str
+    ):
+        embed = discord.Embed(
+            title=f"Player Profile: {player_name}",
+            description=profile_snippet,
+            color=PlayerProfileEmbed.COLOR,
+            url=link
+        )
+        if player_image:
+            embed.set_image(url=player_image)
+
+        embed.set_footer(text="Player profile data is sourced from Wikipedia, via Google.")
+
+        return embed
+
+
 class Commands:
 
     def __init__(self, backend: Optional[BackendStore] = None, search_engine: Optional[Search] = None):
@@ -356,6 +380,35 @@ class Commands:
         except Exception:
             return "Failed to add player - backend failure."
 
+    def get_player_profile(self, player_name):
+        """Uses google search to get information about a given player, from wikipedia."""
+        if not self.search_engine:
+            return discord.Embed(
+                title=f"Google search API not enabled.",
+                description="Whoops! The search API hasn't been enabled. This command isn't supported.",
+                color=0xEE4B2B
+            )
+
+        result = self.search_engine.get_first_web_result(f"site:en.wikipedia.org {player_name} golf")
+        if not result:
+            return discord.Embed(
+                title=f"{player_name} was not found.",
+                description="Whoops! We don't know who that is, sorry.",
+                color=0xEE4B2B
+            )
+
+        image = None
+        for metatag in result.pagemap.metatags:
+            if metatag.image:
+                image = metatag.image
+
+        return PlayerProfileEmbed.get_embed(
+            player_name=player_name,
+            player_image=image,
+            link=result.link,
+            profile_snippet=result.snippet
+        )
+
 
 class BotClient(discord.Client):
     def __init__(self, intents: discord.Intents):
@@ -409,6 +462,16 @@ async def add_tracked_player(interaction: discord.Interaction, player_name: str)
     """Displays the current and upcoming golf events, as published by ESPN."""
     commands.add_tracked_player(interaction.guild_id, player_name)
     await interaction.response.send_message(f"{player_name} Successfully added to your tracked player list.")
+
+
+@client.tree.command(
+    name="get_player_profile",
+    description="Get the player profile - and hopefully a picture - of a given player by name.",
+)
+async def get_player_profile(interaction: discord.Interaction, player_name: str):
+    """Uses Wikipedia to get player details, given a playe rname."""
+    embeds = commands.get_player_profile(player_name)
+    await interaction.response.send_message(embed=embeds)
 
 
 if __name__ == '__main__':
