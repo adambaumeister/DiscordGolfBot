@@ -42,7 +42,7 @@ class MockBackend:
 
 class TestCommands:
     @patch('bot.requests')
-    def test_get_root_scoreboard(self, mocked_requests, mocked_normal_response):
+    def test_get_top_5_events(self, mocked_requests, mocked_normal_response):
         mocked_requests.get.return_value = mocked_normal_response
 
         # note; no mocked backend
