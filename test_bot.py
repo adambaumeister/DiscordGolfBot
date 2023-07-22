@@ -38,5 +38,3 @@ class TestCommands:
         commands = Commands()
         top5_by_event = commands.get_top_5_by_event()
         assert len(top5_by_event[0].fields) == 5
-        print(top5_by_event[0].fields)
-        print(top5_by_event[1].description)

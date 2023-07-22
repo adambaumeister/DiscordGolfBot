@@ -1,7 +1,6 @@
 import os
 import re
 from typing import Optional, List
-import json
 import requests
 from pydantic import BaseModel, Field, model_validator
 import datetime
@@ -153,8 +152,6 @@ def linescores_to_rounds(linescores: List[dict]):
             holes = []
             for number, round_linescore in enumerate(line_score.get("linescores")):
                 score = round_linescore.get("value")
-                if score == 0:
-                    score_to_par = True
 
                 holes.append(
                     Hole(
@@ -266,7 +263,7 @@ class BotClient(discord.Client):
             LOGGER.info(f"copying commands to {guild.name}")
             self.tree.copy_global_to(guild=guild)
             await self.tree.sync(guild=guild)
-            LOGGER.info(f"Done - Client connected.")
+            LOGGER.info("Done - Client connected.")
 
 
 intents = discord.Intents.default()
