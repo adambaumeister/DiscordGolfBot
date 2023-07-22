@@ -384,7 +384,7 @@ class Commands:
         """Uses google search to get information about a given player, from wikipedia."""
         if not self.search_engine:
             return discord.Embed(
-                title=f"Google search API not enabled.",
+                title="Google search API not enabled.",
                 description="Whoops! The search API hasn't been enabled. This command isn't supported.",
                 color=0xEE4B2B
             )

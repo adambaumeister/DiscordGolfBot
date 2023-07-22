@@ -4,7 +4,7 @@ import pytest
 
 from bot import EspnScoreboardAPI, Commands, linescores_to_rounds, get_current_round_number
 from backend import GuildConfig
-from search import TextItem, PageMap, MetaTags
+from search import TextItem
 from test_backend import TEST_GUILD_ID, TEST_PLAYER_NAME
 
 
@@ -82,5 +82,5 @@ class TestCommands:
     def test_get_player_profile(self, mocked_normal_response):
         commands = Commands(search_engine=MockSearch())
         player_profile_embed = commands.get_player_profile("Rory McIlroy")
-        assert player_profile_embed.title == f"Player Profile: Rory McIlroy"
+        assert player_profile_embed.title == "Player Profile: Rory McIlroy"
         assert player_profile_embed.image
