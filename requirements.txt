@@ -3,3 +3,4 @@ pydantic
 pytest
 discord.py
 python-dotenv
+firebase-admin

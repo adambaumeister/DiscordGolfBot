@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 import discord
 import logging
 
+from backend import PlayerDetails, BackendStore, GuildConfig
+
 LOGGER = logging.getLogger()
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -24,17 +26,6 @@ class CalenderEvent(BaseModel):
     startDate: datetime.datetime
     endDate: datetime.datetime
     event: EventLink
-
-
-class Flag(BaseModel):
-    href: str
-    country: str = Field(alias="alt")
-
-
-class PlayerDetails(BaseModel):
-    fullName: str
-    shortName: str
-    flag: Flag
 
 
 class Player(BaseModel):
@@ -201,18 +192,112 @@ class Top5ResponseEmbed:
                 value=f"{player_and_score.score} through {player_and_score.through} holes.",
                 inline=False
             )
+
+        embed.set_footer(text="Some events may be omitted based on your tracked player settings.")
+
+        return embed
+
+
+class CalenderResponseEmbed:
+    COLOR = 0x7FFFD4
+
+    @staticmethod
+    def get_embed(
+            league_name: str,
+            league_icon: str,
+            running_events: List[CalenderEvent],
+            upcoming_calender_events: List[CalenderEvent]
+    ):
+        embed = discord.Embed(
+            title=f"📅 Upcoming {league_name} Golf Tournaments",
+            description="The list of upcoming golf tournaments within the next 30 days.",
+            color=CalenderResponseEmbed.COLOR
+        )
+        for calender_event in running_events:
+            embed.add_field(
+                name=f"{calender_event.label}",
+                value="⛳ Currently in progress!",
+                inline=True
+            )
+
+        embed.set_thumbnail(url=league_icon)
+
+        for calender_event in upcoming_calender_events:
+            nice_date_string = calender_event.startDate.strftime("%d/%m/%Y")
+            embed.add_field(
+                name=f"{calender_event.label}",
+                value=f"Starts on {nice_date_string}.",
+                inline=True
+            )
+
         return embed
 
 
 class Commands:
 
-    @staticmethod
-    def get_current_events(event_name_filter: Optional[str] = None):
-        scoreboard = EspnScoreboardAPI.get_scoreboard()
-        return [x for x in scoreboard.events if text_string_compare(event_name_filter, x.name)]
+    def __init__(self, backend: Optional[BackendStore]):
+        self.backend = backend
 
-    def get_top_5_by_event(self, event_name_filter: Optional[str] = None) -> List[discord.Embed]:
-        events = self.get_current_events(event_name_filter)
+    def _get_guild_config(self, guild_id):
+        if self.backend:
+            return self.backend.get_guild_config(guild_id)
+        else:
+            return GuildConfig(
+                guild_id=guild_id,
+                track_players=[]
+            )
+
+    def _filter_events_by_guild_config(self, guild_id: int, events: List[RunningEvent]):
+        if not guild_id:
+            return events
+
+        guild_config = self._get_guild_config(guild_id)
+        track_players = [x.lower() for x in guild_config.track_players]
+
+        filtered_events = []
+        for event in events:
+            competition_players = [x.details.fullName.lower() for x in event.competitions[0].players]
+            if bool(set(track_players) & set(competition_players)):
+                filtered_events.append(event)
+
+        return filtered_events
+
+    def get_current_events(self, guild_id: Optional[int] = None, event_name_filter: Optional[str] = None):
+        scoreboard = EspnScoreboardAPI.get_scoreboard()
+        filtered_events = self._filter_events_by_guild_config(guild_id, scoreboard.events)
+        return [x for x in filtered_events if text_string_compare(event_name_filter, x.name)]
+
+    def get_upcoming_events(self) -> List[discord.Embed]:
+        scoreboard = EspnScoreboardAPI.get_scoreboard()
+        future_events = []
+        current_events = []
+        today = datetime.datetime.today()
+        today = today.replace(tzinfo=datetime.timezone.utc)
+        embeds = []
+        for league in scoreboard.leagues:
+            for calender_event in league.calendar:
+                if calender_event.endDate > today > calender_event.startDate:
+                    current_events.append(calender_event)
+                elif today < calender_event.startDate < today + datetime.timedelta(days=30):
+                    future_events.append(calender_event)
+
+            embeds.append(
+                CalenderResponseEmbed.get_embed(
+                    league_name=league.name,
+                    league_icon=league.logos[-1].href,
+                    running_events=current_events,
+                    upcoming_calender_events=future_events
+                )
+            )
+
+        return embeds
+
+    def get_top_5_by_event(
+            self,
+            guild_id: Optional[int],
+            event_name_filter: Optional[str] = None
+    ) -> List[discord.Embed]:
+        events = self.get_current_events(guild_id, event_name_filter)
         top_five_by_event = {}
         embeds = []
 
@@ -226,7 +311,7 @@ class Commands:
                 rounds = linescores_to_rounds(player.linescores)
 
                 try:
-                    through = len(rounds.scorecards[current_round-1].holes)
+                    through = len(rounds.scorecards[current_round - 1].holes)
                 except IndexError:
                     through = 0
 
@@ -251,6 +336,17 @@ class Commands:
 
         return embeds
 
+    def add_tracked_player(self, guild_id: int, player_name: str):
+        """Adds a player to be 'tracked', which filters all events to only those which
+        feature them. Keeps the reported scoreboards from getting too gross, though doesn't currently
+        effect calander events as we can't see the roster in advance."""
+
+        try:
+            self.backend.add_tracked_player(guild_id, player_name)
+            return f"Added {player_name} to the list of tracked players!"
+        except Exception:
+            return "Failed to add player - backend failure."
+
 
 class BotClient(discord.Client):
     def __init__(self, intents: discord.Intents):
@@ -266,18 +362,40 @@ class BotClient(discord.Client):
             LOGGER.info("Done - Client connected.")
 
 
+backend_store = None
+if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+    # Only enable the backend store if we've been given creds.
+    backend_store = BackendStore()
+
 intents = discord.Intents.default()
 intents.message_content = True
 client = BotClient(intents=intents)
 
-commands = Commands()
+commands = Commands(backend_store)
 
 
 @client.tree.command(name="show_leaderboards", description="Show running tournament leaderboards.")
 async def show_leaderboards(interaction: discord.Interaction):
     """Displays the running tournament leaderboards."""
-    embeds = commands.get_top_5_by_event()
+    embeds = commands.get_top_5_by_event(guild_id=interaction.guild_id)
     await interaction.response.send_message(embeds=embeds)
+
+
+@client.tree.command(name="show_upcoming_events", description="Show the upcoming and in progress golf tournaments.")
+async def show_upcoming_events(interaction: discord.Interaction):
+    """Displays the current and upcoming golf events, as published by ESPN."""
+    embeds = commands.get_upcoming_events()
+    await interaction.response.send_message(embeds=embeds)
+
+
+@client.tree.command(
+    name="add_tracked_player",
+    description="Add a player to be tracked, which filters the events to only those that feature them.",
+)
+async def add_tracked_player(interaction: discord.Interaction, player_name: str):
+    """Displays the current and upcoming golf events, as published by ESPN."""
+    commands.add_tracked_player(interaction.guild_id, player_name)
+    await interaction.response.send_message(f"{player_name} Successfully added to your tracked player list.")
 
 
 if __name__ == '__main__':
