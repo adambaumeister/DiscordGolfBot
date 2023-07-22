@@ -47,7 +47,7 @@ class TestCommands:
 
         # note; no mocked backend
         commands = Commands(None)
-        top5_by_event = commands.get_top_5_by_event()
+        top5_by_event = commands.get_top_5_by_event(None)
         assert len(top5_by_event[0].fields) == 5
 
     @patch('bot.requests')

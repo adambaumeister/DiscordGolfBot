@@ -336,13 +336,13 @@ class Commands:
 
         return embeds
 
-    def add_tracked_player(self, backend: BackendStore, guild_id: int, player_name: str):
+    def add_tracked_player(self, guild_id: int, player_name: str):
         """Adds a player to be 'tracked', which filters all events to only those which
         feature them. Keeps the reported scoreboards from getting too gross, though doesn't currently
         effect calander events as we can't see the roster in advance."""
 
         try:
-            backend.add_tracked_player(guild_id, player_name)
+            self.backend.add_tracked_player(guild_id, player_name)
             return f"Added {player_name} to the list of tracked players!"
         except Exception:
             return "Failed to add player - backend failure."
@@ -394,7 +394,7 @@ async def show_upcoming_events(interaction: discord.Interaction):
 )
 async def add_tracked_player(interaction: discord.Interaction, player_name: str):
     """Displays the current and upcoming golf events, as published by ESPN."""
-    commands.add_tracked_player(backend_store, interaction.guild_id, player_name)
+    commands.add_tracked_player(interaction.guild_id, player_name)
     await interaction.response.send_message(f"{player_name} Successfully added to your tracked player list.")
 
 
