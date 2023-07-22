@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import discord
 import logging
 
+from search import Search
 from backend import PlayerDetails, BackendStore, GuildConfig
 
 LOGGER = logging.getLogger()
@@ -174,7 +175,8 @@ class Top5ResponseEmbed:
             tournament_name: str,
             tournament_url: str,
             current_round: int,
-            players_and_scores: List[PlayerAndScore]
+            players_and_scores: List[PlayerAndScore],
+            search_engine: Optional[Search] = None
     ):
         if not re.match("the", tournament_name.lower()):
             tournament_name = f"The {tournament_name}"
@@ -185,7 +187,12 @@ class Top5ResponseEmbed:
             description=f"The Top 5 players currently leading '{tournament_name}' in round number {current_round}.",
             color=Top5ResponseEmbed.COLOR
         )
-        embed.set_thumbnail(url=PLACEHOLDER_THUMBNAIL)
+        if search_engine:
+            result_image = search_engine.get_first_image(tournament_name)
+            embed.set_thumbnail(url=result_image.image.thumbnailLink)
+        else:
+            embed.set_thumbnail(url=PLACEHOLDER_THUMBNAIL)
+
         for player_and_score in players_and_scores:
             embed.add_field(
                 name=f"🏌️‍♂️{player_and_score.player_name}",
@@ -235,8 +242,9 @@ class CalenderResponseEmbed:
 
 class Commands:
 
-    def __init__(self, backend: Optional[BackendStore]):
+    def __init__(self, backend: Optional[BackendStore] = None, search_engine: Optional[Search] = None):
         self.backend = backend
+        self.search_engine = search_engine
 
     def _get_guild_config(self, guild_id):
         if self.backend:
@@ -330,7 +338,8 @@ class Commands:
                     tournament_name=event.name,
                     tournament_url=event.links[0].href,
                     players_and_scores=player_and_scores[:5],
-                    current_round=current_round
+                    current_round=current_round,
+                    search_engine=self.search_engine
                 )
             )
 
@@ -363,15 +372,19 @@ class BotClient(discord.Client):
 
 
 backend_store = None
+search_engine = None
 if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
     # Only enable the backend store if we've been given creds.
     backend_store = BackendStore()
+if os.getenv("GOOGLE_SEARCH_KEY"):
+    # Only enable the Google search functionality if we've been given a key
+    search_engine = Search()
 
 intents = discord.Intents.default()
 intents.message_content = True
 client = BotClient(intents=intents)
 
-commands = Commands(backend_store)
+commands = Commands(backend_store, search_engine=search_engine)
 
 
 @client.tree.command(name="show_leaderboards", description="Show running tournament leaderboards.")

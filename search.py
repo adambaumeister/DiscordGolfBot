@@ -70,6 +70,10 @@ class Search:
         self.image_search_cache = ImageSearchCache()
 
     def get_first_image(self, search_str: str):
+        cached_result = self.image_search_cache.get_from_cache(search_str)
+        if cached_result:
+            return cached_result.response.items[0]
+
         extra_params = {
             "q": search_str,
             "searchType": "image"
@@ -79,4 +83,5 @@ class Search:
             params={**self.params, **extra_params}
         ).json()
         search_response = ImageSearchResponse.model_validate(r)
+        self.image_search_cache.add_to_cache(search_str, CachedImageSearch(response=search_response))
         return search_response.items[0]
