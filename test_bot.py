@@ -1,10 +1,11 @@
 import json
+from unittest.mock import MagicMock, patch
+import pytest
 
 from bot import EspnScoreboardAPI, Commands, linescores_to_rounds, get_current_round_number
 from backend import GuildConfig
+from search import TextItem
 from test_backend import TEST_GUILD_ID, TEST_PLAYER_NAME
-from unittest.mock import MagicMock, patch
-import pytest
 
 
 @pytest.fixture
@@ -40,6 +41,12 @@ class MockBackend:
         )
 
 
+class MockSearch:
+    def get_first_web_result(self, search):
+        d = json.load(open("test_data/player_search_response.json"))
+        return TextItem.model_validate(d)
+
+
 class TestCommands:
     @patch('bot.requests')
     def test_get_top_5_events(self, mocked_requests, mocked_normal_response):
@@ -71,3 +78,9 @@ class TestCommands:
         commands = Commands(backend=MockBackend())
         matched_events = commands.get_current_events(TEST_GUILD_ID)
         assert len(matched_events) == 1
+
+    def test_get_player_profile(self, mocked_normal_response):
+        commands = Commands(search_engine=MockSearch())
+        player_profile_embed = commands.get_player_profile("Rory McIlroy")
+        assert player_profile_embed.title == "Player Profile: Rory McIlroy"
+        assert player_profile_embed.image
