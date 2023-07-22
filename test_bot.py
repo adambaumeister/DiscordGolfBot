@@ -38,3 +38,17 @@ class TestCommands:
         commands = Commands()
         top5_by_event = commands.get_top_5_by_event()
         assert len(top5_by_event[0].fields) == 5
+
+    @patch('bot.requests')
+    def test_get_calender_events(self, mocked_requests, mocked_normal_response):
+        mocked_requests.get.return_value = mocked_normal_response
+
+        commands = Commands()
+        embeds = commands.get_upcoming_events()
+
+        assert len(embeds) == 1
+        current_field = next(x for x in embeds[0].fields if "The Open" in x.name)
+        assert current_field.value == "⛳ Currently in progress!"
+
+        future_field = next(x for x in embeds[0].fields if "3M Open" in x.name)
+        assert future_field.value == "Starts on 27/07/2023."
