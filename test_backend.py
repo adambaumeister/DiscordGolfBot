@@ -28,3 +28,20 @@ def test_add_tracked_player(backend_fixture):
     guild_config = backend_fixture.get_guild_config(TEST_GUILD_ID)
 
     assert guild_config.track_players == [TEST_PLAYER_NAME, TEST_PLAYER_NAME_2]
+
+
+def test_enable_notifications(backend_fixture):
+    from backend import LOGGER, GuildConfig
+    LOGGER.setLevel(logging.DEBUG)
+    backend_fixture.enable_notifications(TEST_GUILD_ID, 1123456)
+    backend_fixture.add_tracked_player(TEST_GUILD_ID, TEST_PLAYER_NAME_2)
+
+    guild_config: GuildConfig = backend_fixture.add_or_get_guild_config(TEST_GUILD_ID)
+
+    assert guild_config.notifications_enabled
+    assert guild_config.notification_channel == 1123456
+
+    assert backend_fixture.get_guilds_with_notifications()
+
+    backend_fixture.add_sent_notification(TEST_GUILD_ID, "test_notification_title")
+    assert backend_fixture.get_notification(TEST_GUILD_ID, "test_notification_title")

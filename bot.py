@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 import datetime
 from dotenv import load_dotenv
 import discord
+from discord.ext import tasks
 import logging
 
 from search import Search
@@ -56,12 +57,25 @@ class Links(BaseModel):
     href: str
 
 
+class EventStatusType(BaseModel):
+    id: int
+    name: str
+    state: str
+    completed: bool
+    description: str
+
+
+class EventStatus(BaseModel):
+    type: EventStatusType
+
+
 class RunningEvent(BaseModel):
     id: int
     startDate: datetime.datetime = Field(alias="date")
     endDate: datetime.datetime
     name: str
     shortName: str
+    event_status: EventStatus = Field(alias="status")
 
     competitions: List[Competition]
     links: List[Links]
@@ -163,6 +177,37 @@ def linescores_to_rounds(linescores: List[dict]):
     )
 
 
+class ResultRecord(BaseModel):
+    winner: str
+    winning_score: int
+    second_place_score: int
+    margin: int
+
+    second_place_players: List[str]
+
+
+def get_winner_and_margin(event: RunningEvent):
+    """Given a completed event, return the winner and runners up, and the margin difference between them."""
+    winner = event.competitions[0].players[0]
+    second = event.competitions[0].players[1]
+
+    winner_score = int(winner.score)
+    second_score = int(second.score)
+
+    runners_up = []
+    for player in event.competitions[0].players:
+        if player.score == second_score:
+            runners_up.append(player.details.shortName)
+
+    return ResultRecord(
+        winner=winner.details.fullName,
+        winning_score=int(winner_score),
+        second_place_score=int(second_score),
+        margin=(-(int(winner_score) - (int(second_score)))),
+        second_place_players=runners_up
+    )
+
+
 def get_current_round_number(all_rounds: List[Rounds]):
     return sorted([len(x.scorecards) for x in all_rounds], reverse=True)[0]
 
@@ -181,6 +226,24 @@ class Top5ResponseEmbed:
         if not re.match("the", tournament_name.lower()):
             tournament_name = f"The {tournament_name}"
 
+        if current_round == 0:
+            # If the round hasn't started yet, return a message..
+            embed = discord.Embed(
+                title=f"'{tournament_name}' is starting soon!",
+                url=tournament_url,
+                description=f"{tournament_name} is pending start - nobody has teed off just yet.",
+                color=Top5ResponseEmbed.COLOR
+            )
+            if search_engine:
+                result_image = search_engine.get_first_image(tournament_name)
+                embed.set_thumbnail(url=result_image.image.thumbnailLink)
+            else:
+                embed.set_thumbnail(url=PLACEHOLDER_THUMBNAIL)
+
+            embed.set_footer(text="Some events may be omitted based on your tracked player settings.")
+
+            return embed
+
         embed = discord.Embed(
             title=f"'{tournament_name}' Leaderboard - Round {current_round}",
             url=tournament_url,
@@ -194,11 +257,13 @@ class Top5ResponseEmbed:
             embed.set_thumbnail(url=PLACEHOLDER_THUMBNAIL)
 
         for player_and_score in players_and_scores:
-            embed.add_field(
-                name=f"🏌️‍♂️{player_and_score.player_name}",
-                value=f"{player_and_score.score} through {player_and_score.through} holes.",
-                inline=False
-            )
+            if player_and_score.through > 0:
+                # Omit players that haven't tee'd off yet, if any.
+                embed.add_field(
+                    name=f"🏌️‍♂️{player_and_score.player_name}",
+                    value=f"{player_and_score.score} through {player_and_score.through} holes.",
+                    inline=False
+                )
 
         embed.set_footer(text="Some events may be omitted based on your tracked player settings.")
 
@@ -264,6 +329,39 @@ class PlayerProfileEmbed:
         return embed
 
 
+class WinnerEmbed:
+    COLOR = 0xFFD700
+
+    @staticmethod
+    def get_embed(
+            player_name: str,
+            player_image: str,
+            event_title: str,
+            win_margin: int,
+            win_snippet: str,
+            link: str
+    ):
+        if not re.match("the", event_title.lower()):
+            event_title = f"The {event_title}"
+
+        margin_str = f"by {win_margin} strokes!"
+        if win_margin == 1:
+            f"by only {win_margin} stroke!"
+        elif win_margin == 0:
+            "in a playoff!"
+
+        embed = discord.Embed(
+            title=f"🏆 {player_name} has won {event_title} {margin_str}",
+            description=win_snippet,
+            color=PlayerProfileEmbed.COLOR,
+            url=link
+        )
+        if player_image:
+            embed.set_image(url=player_image)
+
+        return embed
+
+
 class Commands:
 
     def __init__(self, backend: Optional[BackendStore] = None, search_engine: Optional[Search] = None):
@@ -272,7 +370,7 @@ class Commands:
 
     def _get_guild_config(self, guild_id):
         if self.backend:
-            return self.backend.get_guild_config(guild_id)
+            return self.backend.add_or_get_guild_config(guild_id)
         else:
             return GuildConfig(
                 guild_id=guild_id,
@@ -294,6 +392,62 @@ class Commands:
 
         return filtered_events
 
+    def _check_embeds_need_notifications(self, guild_id, embeds: List[discord.Embed]):
+        add = []
+        for embed in embeds:
+            if not self.backend.get_notification(guild_id, embed.title):
+                add.append(embed)
+
+        return add
+
+    async def notifications(self, client: discord.Client):
+        guilds_to_notify_configs = self.backend.get_guilds_with_notifications()
+        for guild_config in guilds_to_notify_configs:
+            if guild_config.guild_id == 12345:
+                # Skip test guild id, if present in backend
+                continue
+
+            guild = client.get_guild(guild_config.guild_id)
+            notification_channel = guild.get_channel(guild_config.notification_channel)
+
+            winner_embeds = self.get_winners(guild_id=guild_config.guild_id)
+
+            notifications_to_send = self._check_embeds_need_notifications(guild_id=guild_config.guild_id, embeds=winner_embeds)
+            if notifications_to_send:
+                await notification_channel.send(embeds=notifications_to_send)
+
+    def get_winners(self, guild_id: Optional[int] = None):
+        events = self.get_current_events(guild_id)
+        embeds = []
+        for event in events:
+            if event.event_status.type.completed:
+                event_result = get_winner_and_margin(event)
+                search_result = self.search_engine.get_first_web_result(f"site:espn.com {event_result.winner} {event.name}")
+                if not search_result:
+                    win_snippet = ""
+                    event_link = event.links[0].href
+                else:
+                    win_snippet = search_result.snippet
+                    event_link = search_result.link
+
+                if search_result.pagemap.metatags:
+                    player_image = search_result.pagemap.metatags[0].image
+                else:
+                    player_image = PLACEHOLDER_THUMBNAIL
+
+                embeds.append(
+                    WinnerEmbed.get_embed(
+                        player_name=event_result.winner,
+                        player_image=player_image,
+                        win_margin=event_result.margin,
+                        event_title=event.name,
+                        win_snippet=win_snippet,
+                        link=event_link
+                    )
+                )
+
+        return embeds
+
     def get_current_events(self, guild_id: Optional[int] = None, event_name_filter: Optional[str] = None):
         scoreboard = EspnScoreboardAPI.get_scoreboard()
         filtered_events = self._filter_events_by_guild_config(guild_id, scoreboard.events)
@@ -304,6 +458,7 @@ class Commands:
         future_events = []
         current_events = []
         today = datetime.datetime.today()
+
         today = today.replace(tzinfo=datetime.timezone.utc)
         embeds = []
         for league in scoreboard.leagues:
@@ -367,6 +522,14 @@ class Commands:
                 )
             )
 
+        if not embeds:
+            return [
+                discord.Embed(
+                    title="No Tournaments are currently running!",
+                    description="There are no tournaments currently running, or they are all filterd by your tracked player settings. ",
+                    color=Top5ResponseEmbed.COLOR
+                )
+            ]
         return embeds
 
     def add_tracked_player(self, guild_id: int, player_name: str):
@@ -379,6 +542,14 @@ class Commands:
             return f"Added {player_name} to the list of tracked players!"
         except Exception:
             return "Failed to add player - backend failure."
+
+    def enable_notifications(self, guild_id: int, channel_id: int):
+        """Enables notifications and configures the channel to send 'em to."""
+        try:
+            self.backend.enable_notifications(guild_id, channel_id)
+            return "Notifications enabled in this channel."
+        except Exception:
+            return "Failed to enable notifications - backend failure."
 
     def get_player_profile(self, player_name):
         """Uses google search to get information about a given player, from wikipedia."""
@@ -440,6 +611,19 @@ client = BotClient(intents=intents)
 commands = Commands(backend_store, search_engine=search_engine)
 
 
+@tasks.loop(minutes=5)
+async def notifications():
+    """Runs notifications for all guilds that have enabled them."""
+    await commands.notifications(client)
+
+
+@notifications.before_loop
+async def before_notification_start():
+    """Waits before async routines start"""
+    LOGGER.info("Starting notification loop.")
+    await client.wait_until_ready()
+
+
 @client.tree.command(name="show_leaderboards", description="Show running tournament leaderboards.")
 async def show_leaderboards(interaction: discord.Interaction):
     """Displays the running tournament leaderboards."""
@@ -474,5 +658,21 @@ async def get_player_profile(interaction: discord.Interaction, player_name: str)
     await interaction.response.send_message(embed=embeds)
 
 
+@client.tree.command(
+    name="enable_notifications",
+    description="Turns on notifications about wins/losses and other news.",
+)
+async def enable_notifications(interaction: discord.Interaction):
+    """Enables notifications within this channel."""
+    msg = commands.enable_notifications(interaction.guild_id, interaction.channel_id)
+    await interaction.response.send_message(msg)
+
+
+async def setup_hook() -> None:
+    notifications.start()
+
+
 if __name__ == '__main__':
+    # Start the notifications process by overriding the client.setup_hook function.
+    client.setup_hook = setup_hook
     client.run(BOT_TOKEN)
