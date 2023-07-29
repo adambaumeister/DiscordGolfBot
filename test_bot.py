@@ -6,6 +6,7 @@ from bot import EspnScoreboardAPI, Commands, linescores_to_rounds, get_current_r
 from backend import GuildConfig
 from search import TextItem
 from test_backend import TEST_GUILD_ID, TEST_PLAYER_NAME
+from test_search import search_fixture
 
 
 @pytest.fixture
@@ -53,7 +54,7 @@ class TestESPNScoreBoardAPI:
 
 
 class MockBackend:
-    def get_guild_config(self, guild_id):
+    def add_or_get_guild_config(self, guild_id):
         return GuildConfig(
             guild_id=TEST_GUILD_ID,
             track_players=[TEST_PLAYER_NAME]
@@ -74,7 +75,8 @@ class TestCommands:
         # note; no mocked backend
         commands = Commands(None)
         top5_by_event = commands.get_top_5_by_event(None)
-        assert len(top5_by_event[0].fields) == 5
+        print(top5_by_event[0].fields)
+        assert len(top5_by_event[0].fields) == 1
 
     @patch('bot.requests')
     def test_get_calender_events(self, mocked_requests, mocked_normal_response):

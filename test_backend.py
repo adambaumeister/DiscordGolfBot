@@ -25,7 +25,7 @@ def test_add_tracked_player(backend_fixture):
     backend_fixture.add_tracked_player(TEST_GUILD_ID, TEST_PLAYER_NAME)
     backend_fixture.add_tracked_player(TEST_GUILD_ID, TEST_PLAYER_NAME_2)
 
-    guild_config = backend_fixture.get_guild_config(TEST_GUILD_ID)
+    guild_config = backend_fixture.add_or_get_guild_config(TEST_GUILD_ID)
 
     assert guild_config.track_players == [TEST_PLAYER_NAME, TEST_PLAYER_NAME_2]
 
