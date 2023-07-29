@@ -597,8 +597,8 @@ class BotClient(discord.Client):
 
 backend_store = None
 search_engine = None
-if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-    # Only enable the backend store if we've been given creds.
+if os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or os.getenv("GCP"):
+    # Only enable the backend store if we've been given creds or we're running in GCP.
     backend_store = BackendStore()
 if os.getenv("GOOGLE_SEARCH_KEY"):
     # Only enable the Google search functionality if we've been given a key
