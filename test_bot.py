@@ -6,7 +6,7 @@ from bot import EspnScoreboardAPI, Commands, linescores_to_rounds, get_current_r
 from backend import GuildConfig
 from search import TextItem
 from test_backend import TEST_GUILD_ID, TEST_PLAYER_NAME
-from test_search import search_fixture
+from test_search import search_fixture  # noqa: F401
 
 
 @pytest.fixture
@@ -103,7 +103,7 @@ class TestCommands:
         assert player_profile_embed.image
 
     @patch('bot.requests')
-    def test_get_winner(self, mocked_requests, mocked_finish_response, search_fixture):
+    def test_get_winner(self, mocked_requests, mocked_finish_response, search_fixture):  # noqa: F811
         mocked_requests.get.return_value = mocked_finish_response
 
         commands = Commands(backend=MockBackend(), search_engine=search_fixture)
