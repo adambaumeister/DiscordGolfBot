@@ -416,6 +416,9 @@ class Commands:
             if notifications_to_send:
                 await notification_channel.send(embeds=notifications_to_send)
 
+            for embed in notifications_to_send:
+                self.backend.add_sent_notification(guild_id=guild_config.guild_id, notification_title=embed.title)
+
     def get_winners(self, guild_id: Optional[int] = None):
         events = self.get_current_events(guild_id)
         embeds = []
